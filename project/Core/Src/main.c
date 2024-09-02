@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ring_buffer.h"
+#include "keyboard.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,20 +41,20 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 uint32_t left_toggles = 0;
 uint32_t left_last_press_tick = 0;
 
-uint8_t data_usart1;
+uint8_t data_usart3;
 uint8_t data_usart2;
 
 /* control variables for ring buffer in USART1 */
-#define CAPACITY_USART1 5
-uint8_t mem_usart1[CAPACITY_USART1];
-ring_buffer_t rb_usart1;
+#define CAPACITY_USART3 5
+uint8_t mem_usart3[CAPACITY_USART3];
+ring_buffer_t rb_usart3;
 
 /* control variables for ring buffer in USART2 */
 #define CAPACITY_USART2 10
@@ -65,7 +66,7 @@ ring_buffer_t rb_usart2;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_USART1_UART_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void heartbeat(void);
 /* USER CODE END PFP */
@@ -74,31 +75,34 @@ void heartbeat(void);
 /* USER CODE BEGIN 0 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  /* Data received in USART1 */
-  if (huart->Instance == USART1) {
-	  ring_buffer_write(&rb_usart1, data_usart1);
-	  HAL_UART_Receive_IT(&huart1, &data_usart1, 1);
-  }
-  /* Data received in USART2 */
-  if (huart->Instance == USART2) {
-	  ring_buffer_write(&rb_usart2, data_usart2); // put the data received in buffer
-	  HAL_UART_Receive_IT(&huart2, &data_usart2, 1); // enable interrupt to continue receiving
-  }
+	/* Data received in USART1 */
+	if (huart->Instance == USART3) {
+		ring_buffer_write(&rb_usart3, data_usart3);
+		HAL_UART_Receive_IT(&huart3, &data_usart3, 1);
+	}
+
+	/* Data received in USART2 */
+	if (huart->Instance == USART2) {
+		ring_buffer_write(&rb_usart2, data_usart2); // put the data received in buffer
+		HAL_UART_Receive_IT(&huart2, &data_usart2, 1); // enable interrupt to continue receiving
+	}
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	if (GPIO_Pin == S1_Pin) {
-		HAL_UART_Transmit(&huart2, (uint8_t *)"S1\r\n", 4, 10);
-		if (HAL_GetTick() < (left_last_press_tick + 300)) { // if last press was in the last 300ms
-			left_toggles = 0xFFFFFF; // a long time toggling (infinite)
-		} else {
-			left_toggles = 6;
-		}
-		left_last_press_tick = HAL_GetTick();
-	} else if (GPIO_Pin == S2_Pin) {
-		left_toggles = 0;
-	}
+	uint8_t pressed = keyboard(GPIO_Pin);
+	HAL_UART_Transmit(&huart2,&pressed,1,10);
+//	if (GPIO_Pin == S1_Pin) {
+//		HAL_UART_Transmit(&huart2, (uint8_t *)"S1\r\n", 4, 10);
+//		if (HAL_GetTick() < (left_last_press_tick + 300)) { // if last press was in the last 300ms
+//			left_toggles = 0xFFFFFF; // a long time toggling (infinite)
+//		} else {
+//			left_toggles = 6;
+//		}
+//		left_last_press_tick = HAL_GetTick();
+//	} else if (GPIO_Pin == S2_Pin) {
+//		left_toggles = 0;
+//	}
 }
 
 //void heartbeat(void)
@@ -156,17 +160,17 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART2_UART_Init();
-  MX_USART1_UART_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   /* Initialize ring buffer (control, memory, and capacity) */
-  ring_buffer_init(&rb_usart1, mem_usart1, CAPACITY_USART1);
+  ring_buffer_init(&rb_usart3, mem_usart3, CAPACITY_USART3);
   ring_buffer_init(&rb_usart2, mem_usart2, CAPACITY_USART2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   /* Enable USART Rx interrupt to start receiving */
-  HAL_UART_Receive_IT(&huart1, &data_usart1, 1);
+  HAL_UART_Receive_IT(&huart3, &data_usart3, 1);
   HAL_UART_Receive_IT(&huart2, &data_usart2, 1);
   while (1)
   {
@@ -187,9 +191,9 @@ int main(void)
 			  HAL_UART_Transmit(&huart2, "Error\r\n", 7, 10);
 		  }
 	  }
-	  if (ring_buffer_is_empty(&rb_usart1) == 0) {
+	  if (ring_buffer_is_empty(&rb_usart3) == 0) {
 		  uint8_t data;
-		  ring_buffer_read(&rb_usart1, &data);
+		  ring_buffer_read(&rb_usart3, &data);
 		  HAL_UART_Transmit(&huart2, &data, 1, 10);
 	  }
 //	  heartbeat();
@@ -252,41 +256,6 @@ void SystemClock_Config(void)
 }
 
 /**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -322,6 +291,41 @@ static void MX_USART2_UART_Init(void)
 }
 
 /**
+  * @brief USART3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART3_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART3_Init 0 */
+
+  /* USER CODE END USART3_Init 0 */
+
+  /* USER CODE BEGIN USART3_Init 1 */
+
+  /* USER CODE END USART3_Init 1 */
+  huart3.Instance = USART3;
+  huart3.Init.BaudRate = 115200;
+  huart3.Init.WordLength = UART_WORDLENGTH_8B;
+  huart3.Init.StopBits = UART_STOPBITS_1;
+  huart3.Init.Parity = UART_PARITY_NONE;
+  huart3.Init.Mode = UART_MODE_TX_RX;
+  huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART3_Init 2 */
+
+  /* USER CODE END USART3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -334,13 +338,14 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, D1_Pin|D3_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOA, D1_Pin|D3_Pin|ROW1_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(D4_GPIO_Port, D4_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOB, ROW2_Pin|ROW4_Pin|ROW3_Pin|D4_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pins : S1_Pin S2_Pin */
   GPIO_InitStruct.Pin = S1_Pin|S2_Pin;
@@ -348,19 +353,37 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : D1_Pin D3_Pin */
-  GPIO_InitStruct.Pin = D1_Pin|D3_Pin;
+  /*Configure GPIO pins : D1_Pin D3_Pin ROW1_Pin */
+  GPIO_InitStruct.Pin = D1_Pin|D3_Pin|ROW1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : D4_Pin */
-  GPIO_InitStruct.Pin = D4_Pin;
+  /*Configure GPIO pin : COL1_Pin */
+  GPIO_InitStruct.Pin = COL1_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(COL1_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : COL4_Pin */
+  GPIO_InitStruct.Pin = COL4_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(COL4_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : COL2_Pin COL3_Pin */
+  GPIO_InitStruct.Pin = COL2_Pin|COL3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : ROW2_Pin ROW4_Pin ROW3_Pin D4_Pin */
+  GPIO_InitStruct.Pin = ROW2_Pin|ROW4_Pin|ROW3_Pin|D4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(D4_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI1_IRQn, 0, 0);
@@ -368,6 +391,12 @@ static void MX_GPIO_Init(void)
 
   HAL_NVIC_SetPriority(EXTI4_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
