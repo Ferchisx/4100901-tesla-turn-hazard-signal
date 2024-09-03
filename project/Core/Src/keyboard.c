@@ -9,17 +9,6 @@
 #include <main.h>
 
 uint8_t keyboard(uint16_t GPIO_Pin){
-	static uint16_t last_pressed = 0xFFFF;
-	static uint32_t last_tick = 0;
-
-	if(last_pressed == GPIO_Pin){
-		if(HAL_GetTick() < (last_tick+200)){
-			return;
-		}
-	}
-	last_pressed = GPIO_Pin;
-	last_tick = HAL_GetTick();
-
 	uint8_t pressed = 0xFF;
 	switch(GPIO_Pin){
 	case COL1_Pin:
